@@ -13,7 +13,7 @@ Output layout (relative to dist/):
 The parquet is loadable via:
 
     from datasets import load_dataset
-    ds = load_dataset("<user>/eu-ai-act-2024-1689", split="train")
+    ds = load_dataset("<user>/eu-ai-act", split="train")
 """
 
 from __future__ import annotations
@@ -304,7 +304,7 @@ def _build_dataset_info(
         for lang, chunks in chunks_by_language.items()
     }
     return {
-        "name": "eu-ai-act-2024-1689",
+        "name": "eu-ai-act",
         "version": snapshot_version,
         "celex": AI_ACT_CELEX,
         "eli": AI_ACT_ELI,

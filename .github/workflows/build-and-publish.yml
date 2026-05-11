@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      HF_REPO: ${{ vars.HF_REPO || 'jeroenherczeg/eu-ai-act-2024-1689' }}
+      HF_REPO: ${{ vars.HF_REPO || 'jeroenherczeg/eu-ai-act' }}
       LANGUAGES: ${{ inputs.languages || 'en,nl,fr' }}
       SNAPSHOT: ${{ inputs.snapshot || '' }}
 

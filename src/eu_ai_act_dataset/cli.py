@@ -92,7 +92,7 @@ def validate(
 @app.command("diff")
 def diff(
     dist: Annotated[Path, typer.Argument()] = Path("dist"),
-    repo: Annotated[str, typer.Option("--repo", help="HF dataset repo id")] = "jeroenherczeg/eu-ai-act-2024-1689",
+    repo: Annotated[str, typer.Option("--repo", help="HF dataset repo id")] = "jeroenherczeg/eu-ai-act",
     emit_summary: Annotated[Path | None, typer.Option("--emit-summary")] = None,
 ) -> None:
     """Diff dist/ against the HF dataset's current state."""
@@ -106,7 +106,7 @@ def diff(
 @app.command("publish")
 def publish(
     dist: Annotated[Path, typer.Argument()] = Path("dist"),
-    repo: Annotated[str, typer.Option("--repo")] = "jeroenherczeg/eu-ai-act-2024-1689",
+    repo: Annotated[str, typer.Option("--repo")] = "jeroenherczeg/eu-ai-act",
     version: Annotated[str | None, typer.Option("--version", help="overrides dataset_info.json")] = None,
     private: Annotated[bool, typer.Option("--private")] = False,
 ) -> None:

@@ -46,7 +46,7 @@ python -c "import pyarrow.parquet as pq; t = pq.read_table('dist/ai_act_chunks.p
 
 # 5) (optional) publish — needs HF_TOKEN with 'write' permission
 export HF_TOKEN=hf_...
-uv run eu-ai-act-dataset publish dist --repo jeroenherczeg/eu-ai-act-2024-1689
+uv run eu-ai-act-dataset publish dist --repo jeroenherczeg/eu-ai-act
 ```
 
 ## Continuous publishing
@@ -60,7 +60,7 @@ It pushes to the Hugging Face Hub if `HF_TOKEN` is configured as a repo secret.
 1. Create a Hugging Face write token at <https://huggingface.co/settings/tokens>.
 2. In your GitHub repo: *Settings → Secrets and variables → Actions*
    - Secret: `HF_TOKEN` = `hf_...`
-   - Variable: `HF_REPO` = `jeroenherczeg/eu-ai-act-2024-1689` (optional;
+   - Variable: `HF_REPO` = `jeroenherczeg/eu-ai-act` (optional;
      defaults to the placeholder otherwise)
 3. (Optional) Create the dataset repo on HF first if you want it private at
    creation — the action will otherwise create a public one on first publish.
@@ -98,7 +98,7 @@ DATASET_CARD.md.tmpl   # template; export renders this to dist/README.md
 | Languages | `--lang en --lang nl ...` on the build command (24 official EU languages supported) |
 | Exclude annexes / recitals / article_full chunks | `--no-annexes` / `--no-recitals` / `--no-article-full` |
 | Snapshot version tag | `--snapshot vYYYY-MM-DD` (auto-derived from build date if blank) |
-| HF target repo | `--repo jeroenherczeg/eu-ai-act-2024-1689` (default) or `HF_REPO` env / GH variable |
+| HF target repo | `--repo jeroenherczeg/eu-ai-act` (default) or `HF_REPO` env / GH variable |
 | Cache directory | `--cache <path>` (re-runs are free once the bundle is cached) |
 
 ## Not legal advice

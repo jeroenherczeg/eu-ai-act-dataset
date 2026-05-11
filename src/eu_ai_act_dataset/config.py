@@ -40,4 +40,4 @@ class BuildConfig:
     cache_dir: str = ".dataset_cache/raw"
 
     # Repository to publish to (override per env / CLI).
-    hf_repo: str = "jeroenherczeg/eu-ai-act-2024-1689"
+    hf_repo: str = "jeroenherczeg/eu-ai-act"

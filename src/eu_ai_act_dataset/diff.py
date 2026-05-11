@@ -71,7 +71,7 @@ def main() -> int:
 
     parser = argparse.ArgumentParser()
     parser.add_argument("dist", type=Path)
-    parser.add_argument("--against-hf", required=True, help="repo id like 'user/eu-ai-act-2024-1689'")
+    parser.add_argument("--against-hf", required=True, help="repo id like 'user/eu-ai-act'")
     parser.add_argument("--emit-summary", default=None, help="path; usually $GITHUB_STEP_SUMMARY")
     args = parser.parse_args()
 
