@@ -57,7 +57,11 @@ class Paragraph:
     paragraph_no: int               # the displayed NO.PARAG, e.g. 2 from "2."
     text: str                       # joined ALINEA prose without the points
     points: list[ParagraphPoint] = field(default_factory=list)
-    identifier: str | None = None   # raw "001.002"
+    identifier: str | None = None   # raw IDENTIFIER attr, e.g. "001.002"
+    position: int = 0               # structural position from IDENTIFIER's last segment;
+                                    # authoritative when NO.PARAG conflicts across
+                                    # languages (e.g. NL 073.010 displays "11." — a
+                                    # clerical typo in the official translation).
 
     def full_text(self) -> str:
         """Display form: prose, then point lines, then any trailing subparagraph

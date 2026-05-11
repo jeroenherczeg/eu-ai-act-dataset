@@ -54,9 +54,13 @@ from eu_ai_act_dataset.models import (
 log = logging.getLogger(__name__)
 
 _WS_RE = re.compile(r"\s+")
-_DIVISION_KIND_RE = re.compile(
-    r"^(TITLE|CHAPTER|SECTION|SUBSECTION)\s+([IVXLCDM0-9]+)\b", re.IGNORECASE
-)
+# Language-agnostic numeral extractor: find the first roman or arabic numeral
+# token in the TITLE/TI of a DIVISION or ANNEX. Works across EN/NL/FR/DE/…
+# because every EU language puts the numeral after the type word
+# (CHAPTER I / CHAPITRE I / HOOFDSTUK I / KAPITEL I, ANNEX III / ANNEXE III /
+# BIJLAGE III / ANHANG III, …). The numeral is the only stable token.
+_NUMERAL_RE = re.compile(r"\b([IVXLCDM]+|\d+)\b")
+_DIVISION_DEPTH_KIND = ("chapter", "section", "subsection")
 
 
 def parse_act(body_xml_bytes: bytes, *, document_id: str, language: str, source_url: str) -> ParsedAct:
@@ -191,7 +195,7 @@ def _parse_articles(root: etree._Element) -> list[Article]:
     if enacting is None:
         return []
     out: list[Article] = []
-    _walk_divisions(enacting, DivisionPath(), out)
+    _walk_divisions(enacting, DivisionPath(), out, depth=0)
     return out
 
 
@@ -199,26 +203,37 @@ def _walk_divisions(
     container: etree._Element,
     path: DivisionPath,
     out: list[Article],
+    *,
+    depth: int,
 ) -> None:
-    """Recursively walk DIVISIONs accumulating the path stack; emit articles found."""
+    """Recursively walk DIVISIONs accumulating the path stack; emit articles found.
+
+    The DIVISION's "kind" (chapter / section / subsection) is inferred from
+    nesting depth rather than the language-specific word in the TI text.
+    This is the AI Act's actual layout in every translated language version.
+    """
     for child in container:
         if not isinstance(child.tag, str):
             continue
         if child.tag == "DIVISION":
-            new_path = DivisionPath(parts=list(path.parts) + [_division_label(child)])
-            _walk_divisions(child, new_path, out)
+            new_path = DivisionPath(parts=list(path.parts) + [_division_label(child, depth)])
+            _walk_divisions(child, new_path, out, depth=depth + 1)
         elif child.tag == "ARTICLE":
             out.append(_parse_article(child, path))
 
 
-def _division_label(division: etree._Element) -> tuple[str, str | None, str | None]:
-    """Extract (kind, number, label) from a DIVISION's TITLE > TI/STI."""
+def _division_label(division: etree._Element, depth: int) -> tuple[str, str | None, str | None]:
+    """Extract (kind, number, label) from a DIVISION's TITLE > TI/STI.
+
+    The numeral is extracted with a language-agnostic regex; the kind is
+    derived from nesting depth (0 → chapter, 1 → section, ≥2 → subsection).
+    """
     ti_text = _first_text(division.find("TITLE/TI")) or ""
     sti_text = _first_text(division.find("TITLE/STI"))
-    m = _DIVISION_KIND_RE.match(ti_text)
-    if m:
-        return (m.group(1).lower(), m.group(2), sti_text)
-    return ("division", None, ti_text or sti_text)
+    m = _NUMERAL_RE.search(ti_text)
+    num = m.group(1) if m else None
+    kind = _DIVISION_DEPTH_KIND[min(depth, len(_DIVISION_DEPTH_KIND) - 1)]
+    return (kind, num, sti_text)
 
 
 def _parse_article(article: etree._Element, path: DivisionPath) -> Article:
@@ -246,14 +261,32 @@ def _parse_article(article: etree._Element, path: DivisionPath) -> Article:
 def _parse_paragraph(parag: etree._Element, article_no: int) -> Paragraph:
     no_text = (parag.findtext("NO.PARAG") or "").strip().rstrip(".")
     para_no = int(no_text) if no_text.isdigit() else 0
+    identifier = parag.get("IDENTIFIER")
+    position = _position_from_identifier(identifier)
     text, points = _extract_paragraph_text_and_points(parag)
     return Paragraph(
         article_no=article_no,
         paragraph_no=para_no,
         text=text,
         points=points,
-        identifier=parag.get("IDENTIFIER"),
+        identifier=identifier,
+        position=position,
     )
+
+
+def _position_from_identifier(identifier: str | None) -> int:
+    """Extract the position-within-article from Formex IDENTIFIER "NNN.MMM".
+
+    IDENTIFIER is structural and guaranteed unique within an ARTICLE; it's
+    what we key on for structure_path so per-language display typos don't
+    collide rows (see NL Article 73 paragraph 10 being mislabelled "11.").
+    """
+    if not identifier:
+        return 0
+    parts = identifier.split(".")
+    if len(parts) >= 2 and parts[-1].isdigit():
+        return int(parts[-1])
+    return 0
 
 
 def _parse_unnumbered_paragraph(alinea: etree._Element, article_no: int) -> Paragraph:
@@ -329,10 +362,16 @@ def _render_article(article: Article) -> str:
 
 
 def _annex_number(title_el: etree._Element | None) -> str | None:
+    """Extract the annex's roman numeral (or arabic number) from its TI text.
+
+    Language-agnostic: works for ANNEX III (EN), ANNEXE III (FR), BIJLAGE III
+    (NL), ANHANG III (DE), ALLEGATO III (IT), … — we don't care what the type
+    word is, only the numeral that follows it.
+    """
     if title_el is None:
         return None
     ti_text = _first_text(title_el.find("TI")) or ""
-    m = re.match(r"ANNEX\s+([IVXLCDM0-9]+)", ti_text, re.IGNORECASE)
+    m = _NUMERAL_RE.search(ti_text)
     return m.group(1).upper() if m else None
 
 

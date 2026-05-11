@@ -131,7 +131,15 @@ def _chunk_articles(act: ParsedAct, *, source_type: str) -> list[Chunk]:
             text = p.full_text()
             if not text:
                 continue
-            if p.paragraph_no:
+            # Structure path uses Formex IDENTIFIER position (structural, stable
+            # across languages) rather than NO.PARAG (the displayed number, which
+            # disagrees with position when a translation has a clerical typo —
+            # e.g. NL Article 73 paragraph 10 displays as "11."). citation_label
+            # below still uses paragraph_no so users see the citation exactly as
+            # it appears in the official text of their language.
+            if p.position:
+                struct_path = f"{parent_path}/par:{p.position}"
+            elif p.paragraph_no:
                 struct_path = f"{parent_path}/par:{p.paragraph_no}"
             else:
                 unnumbered_idx += 1
