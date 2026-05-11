@@ -1,13 +1,18 @@
 """Fetch the EU AI Act Formex bundle from EUR-Lex Cellar.
 
-Resolve CELEX → Cellar `branch` notice → FMX4 manifestations by language →
-zipped Formex bundle. Each bundle contains the main act body + one XML file
-per annex. We extract everything into a per-language cache directory.
+For a known regulation (and the AI Act is known) we can skip the branch-notice
+round trip — that endpoint is the most aggressively WAF-challenged at Cellar
+and returns 202 challenges for tens of seconds on cold IPs. Instead:
 
-Cellar caches generated artefacts but returns 202 "Accepted" with an empty
-body while it warms the cache. We poll until 200, bounded by max_wait_s.
+  1. Construct the per-language manifestation URI deterministically:
+       http://publications.europa.eu/resource/oj/{OJ_ID}.{ISO3}.fmx4
+  2. Fetch its RDF descriptor (small, cache-friendly, ~3 KB).
+  3. Extract the `cdm:manifestation_has_item` link → a DOC_* URL.
+  4. GET the DOC_* URL → the zipped Formex bundle.
+  5. Extract; the largest .fmx.xml is the act body, the rest are annexes.
 
-For CI runs, the cache directory is empty; for local runs, we re-use it.
+Each step is retried on transient errors. 202s from any step are polled until
+they resolve to 200 (Cellar's WAF eventually clears).
 """
 
 from __future__ import annotations
@@ -30,11 +35,10 @@ from tenacity import (
     wait_exponential,
 )
 
-from eu_ai_act_dataset.config import AI_ACT_CELLAR_ID, AI_ACT_CELEX
+from eu_ai_act_dataset.config import AI_ACT_CELEX, AI_ACT_OJ_ID
 
 log = logging.getLogger(__name__)
 
-CELLAR_NOTICE_URL = "https://publications.europa.eu/resource/cellar/{cellar_id}"
 ISO_2_TO_3 = {
     "en": "ENG", "nl": "NLD", "fr": "FRA", "de": "DEU", "es": "SPA",
     "it": "ITA", "pt": "POR", "pl": "POL", "ro": "RON", "el": "ELL",
@@ -43,7 +47,15 @@ ISO_2_TO_3 = {
     "bg": "BUL", "hr": "HRV", "mt": "MLT", "ga": "GLE",
 }
 DEFAULT_TIMEOUT = httpx.Timeout(60.0, connect=10.0)
-USER_AGENT = "eu-ai-act-dataset/0.1 (+https://github.com/; data-pipeline)"
+USER_AGENT = "eu-ai-act-dataset/0.1 (+https://github.com/jeroenherczeg/eu-ai-act-dataset)"
+
+# RDF / CDM namespaces in the manifestation descriptor.
+_CDM_NS = "http://publications.europa.eu/ontology/cdm#"
+_RDF_NS = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+
+
+def _manifestation_uri(iso3: str) -> str:
+    return f"http://publications.europa.eu/resource/oj/{AI_ACT_OJ_ID}.{iso3}.fmx4"
 
 
 @dataclass
@@ -60,11 +72,6 @@ class FetchedBundle:
 
 
 def fetch_bundles(languages: list[str], cache_root: Path) -> list[FetchedBundle]:
-    """Fetch one Formex bundle per requested language, caching to disk.
-
-    The bundle's content_hash is taken over the *zip*, not the body — that way
-    the hash also reflects changes to annex files.
-    """
     bundles: list[FetchedBundle] = []
     cache_root.mkdir(parents=True, exist_ok=True)
     for lang in languages:
@@ -85,20 +92,16 @@ def _fetch_one(lang: str, iso3: str, cache_root: Path) -> FetchedBundle:
         log.info("reusing cached bundle: %s", bundle_path)
         zip_bytes = bundle_path.read_bytes()
     else:
-        notice_url = CELLAR_NOTICE_URL.format(cellar_id=AI_ACT_CELLAR_ID)
-        log.info("fetching Cellar notice for %s lang=%s", AI_ACT_CELEX, iso3)
-        notice = _http_get_polling(
-            notice_url,
-            accept="application/xml;notice=branch",
-            accept_language=iso3.lower(),
-        )
-        doc_zip_url = _find_fmx4_doc_url(notice.content, iso3)
+        manifestation = _manifestation_uri(iso3)
+        log.info("fetching manifestation RDF: %s", manifestation)
+        rdf = _http_get_polling(manifestation, accept="application/rdf+xml")
+        doc_zip_url = _extract_doc_url(rdf.content)
         if not doc_zip_url:
             raise RuntimeError(
-                f"no FMX4 manifestation for {AI_ACT_CELEX} lang={iso3} in Cellar notice"
+                f"no DOC_* link in manifestation RDF for {AI_ACT_CELEX} lang={iso3}"
             )
         log.info("downloading Formex bundle: %s", doc_zip_url)
-        zip_resp = _http_get(doc_zip_url)
+        zip_resp = _http_get_polling(doc_zip_url, accept="application/zip")
         zip_bytes = zip_resp.content
         bundle_path.write_bytes(zip_bytes)
 
@@ -139,10 +142,14 @@ def _http_get(url: str, accept: str | None = None, accept_language: str | None =
 
 
 def _http_get_polling(
-    url: str, *, accept: str, accept_language: str | None, max_wait_s: int | None = None
+    url: str,
+    *,
+    accept: str,
+    accept_language: str | None = None,
+    max_wait_s: int | None = None,
 ) -> httpx.Response:
-    """Cellar may return 202 with an empty body while warming its cache.
-    Poll until 200, with bounded backoff."""
+    """Cellar's WAF returns 202 challenges with empty bodies before serving the
+    actual resource. Poll until 200, with bounded backoff."""
     if max_wait_s is None:
         max_wait_s = int(os.environ.get("CELLAR_MAX_WAIT_S", "180"))
     deadline = time.monotonic() + max_wait_s
@@ -154,30 +161,34 @@ def _http_get_polling(
         if r.status_code not in (202, 204) or time.monotonic() > deadline:
             r.raise_for_status()
             raise httpx.HTTPError(
-                f"Cellar returned {r.status_code} with empty body for {url} after {max_wait_s}s"
+                f"Cellar returned {r.status_code} for {url} after {max_wait_s}s"
             )
-        log.info("Cellar returned %s for %s; retrying in %.0fs", r.status_code, url, delay)
+        log.info("Cellar returned %s (likely WAF challenge); retrying in %.0fs", r.status_code, delay)
         time.sleep(delay)
         delay = min(delay * 1.5, 15.0)
 
 
-def _find_fmx4_doc_url(notice_xml: bytes, iso3: str) -> str | None:
-    root = etree.fromstring(notice_xml)
-    for man in root.iter("MANIFESTATION"):
-        if (man.get("manifestation-type") or "").lower() != "fmx4":
-            continue
-        token = f".{iso3}.fmx4".lower()
-        if not any(token in (v or "").lower() for v in (el.text for el in man.iter("VALUE"))):
-            continue
-        for item in man.iter("ITEM"):
-            for value in item.iter("VALUE"):
-                if value.text and "/DOC_" in value.text:
-                    return value.text.strip()
+def _extract_doc_url(rdf_xml: bytes) -> str | None:
+    """Pull the `cdm:manifestation_has_item` resource URL from a manifestation
+    RDF descriptor. The link points at `cellar/{id}.NNNN.NN/DOC_N` — the
+    physical artefact (a zip containing the Formex XML files)."""
+    root = etree.fromstring(rdf_xml)
+    rdf_resource_attr = f"{{{_RDF_NS}}}resource"
+    for el in root.iter(f"{{{_CDM_NS}}}manifestation_has_item"):
+        href = el.get(rdf_resource_attr)
+        if href and "/DOC_" in href:
+            return href.strip()
+    # Fallback: the older `cdm:has` predicate also points to the same item.
+    for el in root.iter(f"{{{_CDM_NS}}}has"):
+        href = el.get(rdf_resource_attr)
+        if href and "/DOC_" in href:
+            return href.strip()
     return None
 
 
 def _largest_act_xml(directory: Path) -> Path:
-    """Pick the act body file (largest .fmx.xml that isn't doc/toc metadata)."""
+    """The act body is the largest .fmx.xml file in the bundle (annex files are
+    smaller siblings; the .doc/.toc metadata files are excluded)."""
     candidates = [
         p
         for p in directory.glob("*.fmx.xml")

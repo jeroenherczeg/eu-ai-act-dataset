@@ -15,6 +15,7 @@ from datetime import date
 # CELEX → Cellar mapping for Regulation (EU) 2024/1689.
 AI_ACT_CELEX = "32024R1689"
 AI_ACT_CELLAR_ID = "dc8116a1-3fe6-11ef-865a-01aa75ed71a1"
+AI_ACT_OJ_ID = "L_202401689"        # Official Journal id used in manifestation URIs
 AI_ACT_ELI = "http://data.europa.eu/eli/reg/2024/1689/oj"
 AI_ACT_CANONICAL_URL = "https://eur-lex.europa.eu/eli/reg/2024/1689/oj"
 AI_ACT_ENTRY_INTO_FORCE = date(2024, 8, 1)
