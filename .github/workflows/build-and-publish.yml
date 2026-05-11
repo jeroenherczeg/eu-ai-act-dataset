@@ -1,0 +1,99 @@
+name: build-and-publish-dataset
+
+# Builds the dataset and publishes to Hugging Face Hub.
+# Trigger sources:
+#   - weekly cron — catches Commission corrigenda / OJ updates without manual work
+#   - workflow_dispatch — for on-demand rebuilds
+#   - push to main on the build code itself
+#
+# PRs that touch source code are validated by validate-pr.yml (no publishing).
+
+on:
+  schedule:
+    - cron: "0 6 * * MON"        # 06:00 UTC every Monday
+  workflow_dispatch:
+    inputs:
+      languages:
+        description: "Comma-separated language codes (default: en,nl,fr)"
+        default: "en,nl,fr"
+        required: false
+      snapshot:
+        description: "Explicit snapshot version (e.g. v2024-10-17). Auto-derived if blank."
+        required: false
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "pyproject.toml"
+      - "DATASET_CARD.md.tmpl"
+      - "gold/**"
+      - ".github/workflows/build-and-publish.yml"
+
+concurrency:
+  group: build-and-publish
+  cancel-in-progress: false      # don't kill a publishing run mid-flight
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_REPO: ${{ vars.HF_REPO || 'jeroenherczeg/eu-ai-act-2024-1689' }}
+      LANGUAGES: ${{ inputs.languages || 'en,nl,fr' }}
+      SNAPSHOT: ${{ inputs.snapshot || '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+          enable-cache: true
+
+      - name: Install Python 3.12
+        run: uv python install 3.12
+
+      - name: Install project
+        run: uv sync
+
+      - name: Build dataset
+        run: |
+          LANG_ARGS=""
+          IFS=',' read -ra LS <<< "${LANGUAGES}"
+          for L in "${LS[@]}"; do LANG_ARGS="$LANG_ARGS --lang $L"; done
+          SNAP_ARG=""
+          if [ -n "$SNAPSHOT" ]; then SNAP_ARG="--snapshot $SNAPSHOT"; fi
+          uv run eu-ai-act-dataset build --output dist $LANG_ARGS $SNAP_ARG --verbose
+
+      - name: Validate
+        run: uv run eu-ai-act-dataset validate dist --verbose
+
+      - name: Diff against currently-published version
+        if: env.HF_TOKEN != ''
+        continue-on-error: true
+        run: |
+          uv run eu-ai-act-dataset diff dist \
+            --repo "${HF_REPO}" \
+            --emit-summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dataset-${{ github.run_number }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish to Hugging Face Hub
+        if: env.HF_TOKEN != '' && github.event_name != 'pull_request'
+        run: |
+          uv run eu-ai-act-dataset publish dist --repo "${HF_REPO}"
+
+      - name: Warn if HF_TOKEN missing
+        if: env.HF_TOKEN == ''
+        run: |
+          echo "::warning::HF_TOKEN secret is not configured; built dataset was not published. Add it under Repo Settings → Secrets → Actions."

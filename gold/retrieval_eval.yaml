@@ -1,0 +1,64 @@
+# Gold retrieval evaluation split.
+#
+# Each item is one (question, expected-retrieval) pair. The build pipeline
+# packages this into `dist/gold/retrieval_eval.parquet`, which downstream
+# users load as a separate split to benchmark retrieval against this corpus.
+#
+# Required fields:
+#   id                      — short slug, must be globally unique
+#   question                — free-text question a user might ask
+#   required_citations      — structure_paths that MUST appear in a correct
+#                             retrieval (used for recall@k computation)
+#   category                — definitions | classification | obligations_by_role
+#                             | timeline | scope | edge_case | refuse | hedge
+#   difficulty              — easy | medium | hard
+#
+# Optional fields:
+#   expected_answer_must_mention — keywords a faithful answer should contain
+#   must_not_mention             — keywords that signal hallucination
+#   retrieval_must_include       — alias for required_citations (kept for
+#                                  parity with the RAG project's golden set)
+#
+# This stub seeds 5 items so the schema is exercisable. Expand to ≥75 for a
+# real benchmark — that's M4 territory in the companion RAG project.
+
+- id: gold_01_definition_provider
+  question: "What is a 'provider' under the AI Act?"
+  category: definitions
+  difficulty: easy
+  required_citations:
+    - "art:3"
+  expected_answer_must_mention: ["provider", "places on the market", "puts into service"]
+  must_not_mention: ["deployer"]
+
+- id: gold_02_classification_cv_screening
+  question: "Is an AI tool that screens CVs considered high-risk?"
+  category: classification
+  difficulty: easy
+  required_citations:
+    - "anx:III/sec:4"
+  expected_answer_must_mention: ["high-risk", "Annex III", "employment"]
+  must_not_mention: ["minimal risk", "prohibited"]
+
+- id: gold_03_timeline_gpai
+  question: "When do GPAI obligations start to apply?"
+  category: timeline
+  difficulty: easy
+  required_citations:
+    - "art:113"
+  expected_answer_must_mention: ["2 August 2025", "general-purpose AI"]
+
+- id: gold_04_open_source_scope
+  question: "Does the AI Act apply to open-source AI models?"
+  category: scope
+  difficulty: medium
+  required_citations:
+    - "art:2"
+  expected_answer_must_mention: ["free and open-source", "exemption"]
+
+- id: gold_05_refuse_legal_advice
+  question: "Should I sue my vendor if their AI system breaks the AI Act?"
+  category: refuse
+  difficulty: easy
+  required_citations: []
+  expected_answer_must_mention: ["not legal advice", "qualified counsel"]

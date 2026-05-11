@@ -1,0 +1,167 @@
+---
+license: cc-by-4.0
+language:
+{{ language_yaml }}
+size_categories:
+  - n<10K
+task_categories:
+  - text-retrieval
+  - question-answering
+  - text-classification
+tags:
+  - legal
+  - eu
+  - ai-act
+  - regulation
+  - rag
+  - multilingual
+pretty_name: EU AI Act (Regulation 2024/1689) — Structured Chunks
+configs:
+  - config_name: default
+    data_files:
+      - split: train
+        path: "ai_act_chunks.parquet"
+---
+
+# EU AI Act — Structured Chunks ({{ version }})
+
+Source-grounded chunks of **Regulation (EU) 2024/1689** (the EU AI Act),
+parsed from the official EUR-Lex Formex XML and packaged for retrieval-augmented
+generation and information-retrieval research.
+
+> ⚠️ Not legal advice. Not an official EU publication. See the *Disclaimer* below.
+
+## What's in here
+
+- **{{ rows }} rows** spanning **{{ languages }}**.
+- Chunk-type breakdown:
+{{ chunk_type_breakdown }}
+- Per-language coverage:
+{{ language_breakdown }}
+
+## Why this dataset
+
+Most public AI Act datasets are either the raw OJ text dump or noisy PDF
+scrapes. This one is built from the **official Formex XML** via the
+Publications Office Cellar, preserving the regulation's hierarchical
+structure (Title → Chapter → Section → Article → Paragraph → Point;
+Recitals; Annexes), and adds three pieces of metadata that are tedious
+to derive correctly but valuable downstream:
+
+1. **Structural identifiers** on every row — `article_no`, `paragraph_no`,
+   `recital_no`, `annex_no`, `annex_section`, plus `references_articles`
+   and `interprets_articles` (recitals → the articles they explain).
+2. **`effective_from`**, mapped per Article 113 of the AI Act:
+   - Articles 1–5 → **2025-02-02** (general provisions + prohibited practices)
+   - Chapters V (GPAI), VII (Governance), Articles 28–39, 78, 99–100 → **2025-08-02**
+   - Default → **2026-08-02**
+   - Article 6(1) → **2027-08-02** (high-risk classification for Annex I products)
+3. **Language-invariant `structure_path`**, so an EN row and a NL row covering
+   the same provision share the same `structure_path` (e.g. `art:9/par:2`).
+   This makes the multilingual rows a parallel corpus by construction.
+
+## How it was built
+
+Pipeline is published as MIT-licensed source code in this repo's companion
+GitHub repository. The build is reproducible:
+
+    uv sync
+    uv run eu-ai-act-dataset build --output dist --lang en --lang nl --lang fr
+
+Each row carries a `bundle_sha256` (sha of the upstream Formex zip) and a
+`snapshot_version` tag so older versions can be reproduced. A weekly GitHub
+Action checks for upstream changes and republishes when the source moves.
+
+## Schema
+
+| Column                | Type           | Description                                                  |
+|-----------------------|----------------|--------------------------------------------------------------|
+| `id`                  | string         | `art-9-par-2-en`, `rec-102-fr`, `anx-III-sec-4-nl`           |
+| `language`            | string         | ISO-639-1: `en`, `nl`, `fr`, ...                             |
+| `text`                | string         | Chunk body                                                   |
+| `chunk_type`          | string         | `paragraph`, `article_full`, `recital`, `annex_item`         |
+| `citation_label`      | string         | `Art. 9(2) AI Act` / `Recital (102) AI Act` / `Annex III, point 4 AI Act` |
+| `structure_path`      | string         | Language-invariant key, e.g. `art:9/par:2`                   |
+| `title_no`            | int32?         | Title number (Roman numeral → int)                            |
+| `chapter_no`          | int32?         | Chapter                                                       |
+| `section_no`          | int32?         | Section within a chapter                                      |
+| `article_no`          | int32?         | 1–113 for the AI Act                                          |
+| `paragraph_no`        | int32?         | Numbered paragraph within an article                          |
+| `recital_no`          | int32?         | 1–180 for the AI Act                                          |
+| `annex_no`            | string?        | `I`, `II`, …, `XIII` (Roman as written)                       |
+| `annex_section`       | string?        | Numbered area within the annex (e.g. `4` for Annex III)       |
+| `references_articles` | list<int32>    | Articles this chunk cites in its text                         |
+| `interprets_articles` | list<int32>    | Recitals only: articles they interpret                        |
+| `defined_terms`       | list<string>   | Article 3 terms appearing verbatim in this chunk              |
+| `effective_from`      | date32         | Applicability date per Article 113                            |
+| `transitional`        | bool           | True for Article 111 transitional provisions                  |
+| `document_id`         | string         | `reg_2024_1689`                                               |
+| `celex`               | string         | `{{ celex }}`                                                 |
+| `source_url`          | string         | EUR-Lex ELI/OJ URL                                            |
+| `source_publisher`    | string         | `European Union`                                              |
+| `license`             | string         | `CC BY 4.0`                                                   |
+| `snapshot_version`    | string         | This snapshot's version tag (e.g. `v2024-10-17`)              |
+| `bundle_sha256`       | string         | sha256 of the upstream Formex bundle (per-language)           |
+| `retrieved_at`        | date32         | Build date                                                    |
+| `parent_structure_path` | string?      | For `paragraph` chunks: points at the `article_full` parent   |
+
+Schema digest (stability fingerprint): `{{ schema_digest }}`
+
+## Loading
+
+```python
+from datasets import load_dataset
+
+# All rows, all languages
+ds = load_dataset("PATH/TO/REPO", split="train")
+
+# English only
+en = ds.filter(lambda r: r["language"] == "en")
+
+# Active under the prohibitions tranche (2 Feb 2025)
+prohibitions = ds.filter(
+    lambda r: r["chunk_type"] == "paragraph"
+    and r["article_no"] in {1, 2, 3, 4, 5}
+)
+```
+
+{{ gold_section }}
+
+## Limitations
+
+- This snapshot reflects the OJ text **as it was when the Cellar bundle
+  was generated**. The Commission may issue corrigenda; the EUR-Lex
+  consolidated view at `source_url` is always authoritative.
+- Footnotes (`<NOTE>` elements in Formex) are stripped: they describe
+  legal sourcing rather than normative content. If you need them, parse
+  the upstream Formex XML directly.
+- LLM-assisted enrichment (risk_category, actor_roles, obligation_type)
+  is **not** included in v1 — it's regex-only. Hand-curation + LLM
+  classification is planned for a v2.
+
+## License
+
+- **Code** (the build pipeline): MIT, see `LICENSE` in the source repo.
+- **Data** (this dataset): **CC BY 4.0**, derived from official EU sources
+  per Commission Decision 2011/833/EU and the EU reuse policy.
+
+When citing, attribute *the European Union* as the originator of the
+regulation. The dataset maintainer's contribution is the structuring and
+metadata, not the text itself.
+
+## Disclaimer
+
+This dataset is an unofficial technical resource prepared for retrieval
+research and information-retrieval experiments. It is not endorsed by,
+affiliated with, or approved by the European Union, the European
+Commission, the Publications Office, or the EU AI Office. It is not
+legal advice and must not be used to determine legal compliance without
+human review.
+
+## Provenance
+
+- CELEX: `{{ celex }}`
+- ELI: <{{ eli }}>
+- Canonical URL: <{{ canonical_url }}>
+- Built at: `{{ built_at }}` (UTC)
+- Schema digest: `{{ schema_digest }}`

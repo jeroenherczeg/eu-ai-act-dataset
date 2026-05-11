@@ -1,0 +1,54 @@
+# Data license
+
+The DATA produced by this pipeline (the chunked text + structural metadata
+published to the Hugging Face Hub) is derived from official European Union
+sources, primarily Regulation (EU) 2024/1689 as published in the Official
+Journal and retrieved from EUR-Lex via the Publications Office Cellar.
+
+European Commission and Publications Office content is generally reusable
+under the Creative Commons Attribution 4.0 International license, per
+Commission Decision 2011/833/EU on the reuse of Commission documents and
+the Commission's reuse policy.
+
+  https://creativecommons.org/licenses/by/4.0/
+  https://eur-lex.europa.eu/content/legal-notice/legal-notice.html
+
+Accordingly, unless an individual source document carries a more restrictive
+notice, the data published from this pipeline is offered under:
+
+    CC BY 4.0  ──  Creative Commons Attribution 4.0 International
+
+You are free to share and adapt the data for any purpose, including
+commercially, provided you give appropriate credit, indicate any changes,
+and do not imply endorsement.
+
+# Attribution
+
+Use of this dataset should attribute:
+
+  - The European Union, as the original source of Regulation (EU) 2024/1689
+    and any accompanying official material.
+  - The maintainer(s) of this repository, who produced the structured chunks
+    and metadata.
+
+# Source-specific notices
+
+Some sources may carry their own legal notices (e.g. national-authority
+guidance, third-party FAQs). For each row published, the `source_url` and
+`source_license_notice` columns let you verify the upstream terms before
+redistribution. When a source's notice differs from CC BY 4.0, the more
+restrictive notice governs that row.
+
+# Not an official publication
+
+This dataset is an unofficial technical resource prepared for retrieval
+research and information-retrieval experiments. It is not endorsed by,
+affiliated with, or approved by the European Union, the European Commission,
+the Publications Office, or the EU AI Office. It is not legal advice and
+must not be used to determine legal compliance without human review.
+
+# Trademarks and emblems
+
+This dataset does not include the EU emblem or any other EU trademarks.
+Use of EU emblems is governed by separate rules and must not imply
+endorsement.

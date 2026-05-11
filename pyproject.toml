@@ -1,0 +1,51 @@
+[project]
+name = "eu-ai-act-dataset"
+version = "0.1.0"
+description = "Structured, source-grounded chunks of Regulation (EU) 2024/1689 (the AI Act) for retrieval research, packaged for the Hugging Face Hub."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Jeroen Herczeg", email = "jeroen@herczeg.be" }]
+keywords = ["ai-act", "eu-law", "rag", "retrieval", "dataset", "huggingface", "legal-nlp"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "httpx>=0.27",
+    "lxml>=5.2",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "tenacity>=8.5",
+    "typer>=0.12",
+    "rich>=13.7",
+    "pyarrow>=17.0",
+    "huggingface-hub>=0.24",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+eu-ai-act-dataset = "eu_ai_act_dataset.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/eu_ai_act_dataset"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["E501"]
